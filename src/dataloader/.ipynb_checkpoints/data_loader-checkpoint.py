@@ -20,6 +20,14 @@ ELEMENT_TO_INDEX = {
     9: 4,
 }
 
+INDEX_TO_SYMBOL = {
+    0: 'H',
+    1: 'C',
+    2: 'N',
+    3: 'O',
+    4: 'F',
+}
+
 class AFMData(Dataset):
     def __init__(self, data_path, transform=None, train_size=0.8, split='train'):
         self.data_path = data_path
@@ -80,8 +88,21 @@ class AFMData(Dataset):
         if x.dim() == 3:
             # Assume [H, W, C] from HDF5, move channels first
             x = x.permute(2, 0, 1).contiguous()
+
+        mask = xyz[:, -1] > 0
+        atomtok = [INDEX_TO_SYMBOL[value] for value in xyz[mask, -1]]
+
+        atomtok_coords = []
+        coord_bin_values = np.round(np.linspace(0,1,64),2)
+        for symbol, coord in zip(atomtok, xyz):
+            new_coord = coord_bin_values[np.argmin(np.abs(coord_bin_values.reshape(1,-1) - coord.reshape(-1,1)), axis = 1)]
+            atomtok_coords.append(f'{symbol}: {new_coord[0]}, {new_coord[1]}, {new_coord[2]},')
+
+        ref = {'atomtok': np.asarray(atomtok), 'edges': np.asarray(edges), 'atomtok_coords': np.asarray(atomtok_coords), 'chartok_coords': np.asarray(atomtok_coords)}
+
+        return idx, x, ref
         
-        return idx, x, sample
+        #return idx, x, sample
 
 
 def get_datasets(data_path, train_transform = None, val_transform = None, train_size=0.8):
@@ -94,11 +115,18 @@ def get_datasets(data_path, train_transform = None, val_transform = None, train_
 
 def afm_collate_fn(batch):
 
-    sample = {'coords':[], 'edges':[]}
+    #sample = {'coords':[], 'edges':[]}
+    ref = {'atomtok': [], 'edges': [], 'atomtok_coords': [], 'chartok_coords': []}
+
     ids = [id[0] for id in batch]
     images = torch.stack([item[1] for item in batch])
     for item in batch:
-        sample['coords'].append(torch.from_numpy(item[2]['coords']))
-        sample['edges'].append(torch.from_numpy(item[2]['edges']))
+        #sample['coords'].append(torch.from_numpy(item[2]['coords']))
+        #sample['edges'].append(torch.from_numpy(item[2]['edges']))
+        ref['atomtok'].append(torch.from_numpy(item[2]['atomtok']))
+        ref['edges'].append(torch.from_numpy(item[2]['edges']))
+        ref['atomtok_coords'].append(torch.from_numpy(item[2]['atomtok_coords']))
+        ref['chartok_coords'].append(torch.from_numpy(item[2]['chartok_coords']))
 
-    return ids, images, sample
+    return ids, images, ref
+    #return ids, images, sample
