@@ -68,7 +68,7 @@ class AFMData(Dataset):
             for j in range(i+1, xyz.shape[0]): 
                 dist = np.linalg.norm(xyz[i, :3] - xyz[j, :3])
                 if dist < 1.2*(COVALENT_RADII[xyz[i, -1]] + COVALENT_RADII[xyz[j, -1]]):
-                    edges.append([i,j])
+                    edges.append([i,j, -100])
 
         # Normalize xyz to [0.25, 0.75]
         xyzmin = np.min(xyz[:, :3])
@@ -99,18 +99,24 @@ class AFMData(Dataset):
 
         #atomtok = self.tokenizer['atomtok'].text_to_sequence(atomtok)
 
-        nodes = {'coords': [], 'symbols': ""}
-        for symbol, coord in zip(atomtok, xyz):
+        coord_bin_values = np.round(np.linspace(0,1,64),2)
+
+        nodes = {'coords': [], 'symbols': [], 'smiles': "", 'indices': []}
+        for i, (symbol, coord) in enumerate(zip(atomtok, xyz)):
             new_coord = coord_bin_values[np.argmin(np.abs(coord_bin_values.reshape(1,-1) - coord.reshape(-1,1)), axis = 1)]
             #atomtok_coords.append(f'{symbol}: {new_coord[0]}, {new_coord[1]}, {new_coord[2]},')
-            nodes['coords'].append(new_coord[:2])
-            nodes['symbols'] = symbol + " "
+            nodes['coords'].append(list(new_coord[:2]))
+            nodes['smiles'] += symbol + " "
+            nodes['symbols'].append(symbol)
+            nodes['indices'].append(i+1)
 
         atomtok_coords = self.tokenizer['atomtok_coords'].nodes_to_sequence(nodes)
 
+        
+
         #ref = {'atomtok': atomtok, 'edges': np.asarray(edges), 'atomtok_coords': atomtok_coords, 'chartok_coords': atomtok_coords}
         #ref = {'atomtok_coords': atomtok_coords, 'atom_indices': , 'coords': nodes['coords'], 'edges': edges}
-        ref = {'atomtok_coords': atomtok_coords}
+        ref = {'atomtok_coords': atomtok_coords, 'edges':edges, 'coords': nodes['coords'], 'atom_indices': nodes['indices']}
         return idx, x, ref
 
 
@@ -126,14 +132,23 @@ def afm_collate_fn(batch):
 
     #sample = {'coords':[], 'edges':[]}
     ref = {'atomtok': [], 'edges': [], 'atomtok_coords': [], 'chartok_coords': []}
-    ref = {'atomtok': []}
+    ref = {'atomtok_coords': [], 'edges': [], 'coords': [], 'atom_indices': []}
     #ref = {'atomtok_coords': []}
 
     PAD_ID = 0
     length = 128
+    MAX_ATOMS = 60
+    pad_coord = [[-1, -1]]
+    pad_edges = [[-100, -100, -100]]
+    
 
     ids = [id[0] for id in batch]
     images = torch.stack([item[1] for item in batch])
+
+    toks = []
+    coordss = []
+    atom_indicess = []
+    edgess = []
     for item in batch:
         #sample['coords'].append(torch.from_numpy(item[2]['coords']))
         #sample['edges'].append(torch.from_numpy(item[2]['edges']))
@@ -144,8 +159,50 @@ def afm_collate_fn(batch):
         
         pad = [PAD_ID]*(length - len(tok))
         tok.extend(pad)
+
+        coords = item[2]['coords']
+
+        pad = pad_coord*(MAX_ATOMS - len(coords))
+        coords.extend(pad)
+
+        atom_indices = item[2]['atom_indices']
+        pad = [0]*(MAX_ATOMS - len(coords))
+        atom_indices.extend(pad)
+
         
-        ref['atomtok_coords'] = tok
+
+        edges = item[2]['edges']
+        n = MAX_ATOMS
+
+        mat = torch.full((1, n, n), fill_value=-100, dtype=torch.long)
+        symmetric = True
+        for item in edges:
+            u, v = int(item[0]), int(item[1])
+            t = int(item[2]) if len(item) > 2 else default
+            if 0 <= u < n and 0 <= v < n:
+                mat[0, u, v] = t
+                if symmetric:
+                    mat[0, v, u] = t
+
+        edges = mat
+        #pad = pad_edges*(100 - len(edges))
+        #edges.extend(pad)
+
+        toks.append(tok)
+        coordss.append(coords)
+        atom_indicess.append(atom_indices)
+        edgess.append(edges)
+            
+    ref['atomtok_coords'].append(torch.tensor(toks))
+    ref['atomtok_coords'].append(torch.tensor([len(toks[0])]*len(toks)))
+
+    ref['edges'] = torch.tensor(edges)
+    
+    ref['coords'] = torch.tensor(coordss)
+    
+    ref['atom_indices'].append(torch.tensor(atom_indicess))
+    ref['atom_indices'].append(torch.tensor([len(atom_indicess[0])]*len(atom_indicess)))
+    
         #ref['atomtok_coords'].append(torch.from_numpy(item[2]['atomtok_coords']))
         #ref['chartok_coords'].append(torch.from_numpy(item[2]['chartok_coords']))
 
