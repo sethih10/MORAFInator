@@ -166,7 +166,7 @@ def afm_collate_fn(batch):
         coords.extend(pad)
 
         atom_indices = item[2]['atom_indices']
-        pad = [0]*(MAX_ATOMS - len(coords))
+        pad = [0]*(MAX_ATOMS - len(atom_indices))
         atom_indices.extend(pad)
 
         
