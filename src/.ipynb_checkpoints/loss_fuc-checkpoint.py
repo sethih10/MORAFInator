@@ -103,14 +103,13 @@ class SequenceLoss(nn.Module):
         """
         batch_size, max_len, vocab_size = output.size()
         output = output.reshape(-1, vocab_size)
-        #target = target.reshape(-1)
         target = target.reshape(-1).clone()  # Clone to avoid in-place modification
         for idx in self.ignore_indices:
             if idx != self.ignore_index:
-                #target.masked_fill_((target == idx), self.ignore_index)
                 target = target.masked_fill((target == idx), self.ignore_index)  # Use non-in-place version
         loss = self.criterion(output, target)
         return loss
+
 
 
 
