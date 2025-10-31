@@ -95,7 +95,7 @@ class AFMData(Dataset):
             x = x.permute(2,0,1).contiguous()
 
         mask = xyz[:, -1] > 0
-        atomtok = " ".join([INDEX_TO_SYMBOL[value] for value in xyz[mask, -1]])
+        atomtok = "".join([INDEX_TO_SYMBOL[value] for value in xyz[mask, -1]])
 
         #atomtok = self.tokenizer['atomtok'].text_to_sequence(atomtok)
 
@@ -106,7 +106,7 @@ class AFMData(Dataset):
             new_coord = coord_bin_values[np.argmin(np.abs(coord_bin_values.reshape(1,-1) - coord.reshape(-1,1)), axis = 1)]
             #atomtok_coords.append(f'{symbol}: {new_coord[0]}, {new_coord[1]}, {new_coord[2]},')
             nodes['coords'].append(list(new_coord[:2]))
-            nodes['smiles'] += symbol + " "
+            nodes['smiles'] += symbol
             nodes['symbols'].append(symbol)
             nodes['indices'].append(i+1)
 
